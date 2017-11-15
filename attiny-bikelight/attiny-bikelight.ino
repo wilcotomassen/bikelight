@@ -1,5 +1,4 @@
 #include <Adafruit_NeoPixel.h>
-#include <avr/sleep.h>
 
 // Button pin (Digital 2)
 #define BUTTON_PIN 2
@@ -9,13 +8,9 @@
 #define LED_PIN 0
 #define LED_COUNT 16
 
-#define MAX_RUNTIME_MS 60 * 1000 // 1 min
-//60*60*1000 // 1 hour
-
 #define MODE_LIGHT          0
 #define MODE_STROBE_BLUE    1
 #define MODE_STROBE_ORANGE  2
-#define MODE_OFF            3
 
 Adafruit_NeoPixel leds = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -26,15 +21,12 @@ const uint32_t C_BLUE = leds.Color(0, 0, 255);
 const uint32_t C_ORANGE = leds.Color(255, 70, 0);
 
 // Mode variables
-volatile boolean modeChangeTriggered = false;
+volatile boolean modeChangeTriggered;
 uint8_t currentMode;
 
 // Strobe variables
 uint32_t currentStrobeColor;
 boolean strobeToggle;
-
-// Sleep variables
-uint64_t sleepTime;
 
 void setup() {
   
@@ -47,17 +39,13 @@ void setup() {
   leds.show();
 
   // Start in light mode
-  currentMode = MODE_LIGHT;
-  enterMode(currentMode);
-
-  // Reset sleep timer
-  resetSleepTimer();
-
+  enterMode(MODE_LIGHT);
+  
 }
 
 void loop() {
 
-  // Mode specifics (if any)
+  // Handle mode specifics (if any)
   switch(currentMode) {
     case MODE_STROBE_BLUE:
     case MODE_STROBE_ORANGE:
@@ -67,16 +55,11 @@ void loop() {
       break;
   }
 
+  // Handle mode change
   if (modeChangeTriggered) {
     delay(300);
     gotoNextMode();
     modeChangeTriggered = false;    
-  }
-
-  // Handle running time timeout
-  if (millis() >= sleepTime) {
-    currentMode = MODE_OFF;
-    enterMode(currentMode);
   }
 
 }
@@ -88,24 +71,30 @@ void setLights(uint32_t leftColor, uint32_t rightColor) {
   leds.show();
 }
 
+/**
+ * Go to next mode (add one to currentMode), will
+ * cycle through all modes if repeatedly called
+ */
 void gotoNextMode() {
-  currentMode++;
+  enterMode(currentMode + 1);
+}
 
-  // Loop around after off
-  if (currentMode > MODE_OFF) {
-    currentMode = MODE_LIGHT;
+/**
+ * Handle changing modes, this function will sanitize the mode
+ * input to prevent entering invalid mode (default is MODE_LIGHT), so
+ * continuously going one mode higher than current mode results in cycling 
+ * through the modes
+ */
+void enterMode(uint8_t mode) { 
+
+  // Prevent entering undefined mode
+  if (mode < MODE_LIGHT || mode > MODE_STROBE_ORANGE) {
+    mode = MODE_LIGHT;
   }
 
   // Handle entering of mode
-  enterMode(currentMode);
-
-  // Reset sleep timer
-  resetSleepTimer();
-  
-}
-
-void enterMode(uint8_t mode) {
-   switch(mode) {
+  currentMode = mode;
+  switch(currentMode) {
     case MODE_LIGHT:
       setLights(C_WHITE, C_WHITE);
       break;
@@ -115,50 +104,14 @@ void enterMode(uint8_t mode) {
     case MODE_STROBE_ORANGE:
       currentStrobeColor = C_ORANGE;
       break;
-    case MODE_OFF:
-      setLights(C_OFF, C_OFF);
-      enterSleepMode();
-      break;
   }
 }
 
+/**
+ * ISR to handle mode button press, sets modeChangeTriggered flag 
+ * to true
+ */
 void modeChangeISR() {
   modeChangeTriggered = true;
-}
-
-void enterSleepMode() {
-
-  // Detach mode button interrupt
-  detachInterrupt(BUTTON_PIN_INTERRUPT);
-
-  // Entering sleep mode: enable sleep and wake-up interrupt
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-  sleep_enable();
-  attachInterrupt(BUTTON_PIN_INTERRUPT, wakeUpInterrupt, LOW);
-  sleep_mode();
-  
-  // >> Here we are in sleep mode
-
-  // Exiting sleepmode: disable sleep and wake-up interrupt
-  sleep_disable();
-  detachInterrupt(BUTTON_PIN_INTERRUPT);
-  
-  // Set the mode to the first mode
-  modeChangeTriggered = true;
-
-  // Attach mode button interrupt
-  attachInterrupt(BUTTON_PIN_INTERRUPT, modeChangeISR, FALLING);
-
-  // Reset sleep timer
-  resetSleepTimer();
-  
-}
-
-void wakeUpInterrupt() {
-  // No real need to do something here  
-}
-
-void resetSleepTimer() {
-  sleepTime = millis() + MAX_RUNTIME_MS;
 }
 
