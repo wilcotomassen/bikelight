@@ -6,27 +6,33 @@
 
 // Led pin
 #define LED_PIN 0
-#define LED_COUNT 16
+#define LED_COUNT 10
 
 #define MODE_LIGHT          0
 #define MODE_STROBE_BLUE    1
 #define MODE_STROBE_ORANGE  2
+#define MODE_STROBE_RED     3
+#define MODE_KITT           4
 
-Adafruit_NeoPixel leds = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel leds = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_RGB + NEO_KHZ800);
 
 // Color palette
 const uint32_t C_OFF = leds.Color(0, 0, 0);
 const uint32_t C_WHITE = leds.Color(255, 255, 255);
 const uint32_t C_BLUE = leds.Color(0, 0, 255);
 const uint32_t C_ORANGE = leds.Color(255, 70, 0);
+const uint32_t C_RED = leds.Color(255, 0, 0);
 
 // Mode variables
 volatile boolean modeChangeTriggered;
 uint8_t currentMode;
 
 // Strobe variables
-uint32_t currentStrobeColor;
-boolean strobeToggle;
+uint32_t primaryColor;
+boolean strobeOn;
+boolean shortStrobe;
+uint8_t strobeCount;
+
 
 void setup() {
   
@@ -49,9 +55,32 @@ void loop() {
   switch(currentMode) {
     case MODE_STROBE_BLUE:
     case MODE_STROBE_ORANGE:
-      setLights(strobeToggle ? currentStrobeColor : C_OFF, strobeToggle ? C_OFF : currentStrobeColor);
-      strobeToggle = !strobeToggle;
-      delay(500);
+    case MODE_STROBE_RED:
+      setLights(strobeOn ? primaryColor : C_OFF, strobeOn ? C_OFF : primaryColor);
+      strobeOn = !strobeOn;
+      delay(shortStrobe ? 150 : 500);
+      strobeCount++;
+      if (strobeCount >= 20) {
+        shortStrobe = !shortStrobe;
+        strobeCount = 0;
+      }
+      
+      break;
+    case MODE_KITT:
+      for (int i = 0; i < LED_COUNT; i++) {
+        for (int j = 0; j < LED_COUNT; j++) {
+          leds.setPixelColor(j, i == j ?  primaryColor : C_OFF);
+        }
+        leds.show();
+        delay(80);        
+      }
+      for (int i = LED_COUNT -2; i > 0; i--) {
+        for (int j = 0; j < LED_COUNT; j++) {
+          leds.setPixelColor(j, i == j ?  primaryColor : C_OFF);
+        }
+        leds.show();
+        delay(80);        
+      }
       break;
   }
 
@@ -88,22 +117,30 @@ void gotoNextMode() {
 void enterMode(uint8_t mode) { 
 
   // Prevent entering undefined mode
-  if (mode < MODE_LIGHT || mode > MODE_STROBE_ORANGE) {
+  if (mode < MODE_LIGHT || mode > MODE_KITT) {
     mode = MODE_LIGHT;
   }
 
   // Handle entering of mode
   currentMode = mode;
+  shortStrobe = false;
+  strobeCount = 0;
   switch(currentMode) {
     case MODE_LIGHT:
       setLights(C_WHITE, C_WHITE);
       break;
     case MODE_STROBE_BLUE:
-      currentStrobeColor = C_BLUE;
+      primaryColor = C_BLUE;
       break;
     case MODE_STROBE_ORANGE:
-      currentStrobeColor = C_ORANGE;
-      break;
+      primaryColor = C_ORANGE;
+      break;    
+    case MODE_STROBE_RED:
+      primaryColor = C_RED;
+      break; 
+    case MODE_KITT:
+      primaryColor = C_RED;
+      break;       
   }
 }
 
